@@ -612,6 +612,81 @@ double calcnewoutvelocity() {
     return vnew;
 }
 
+void timestep() {
+    int accetable_vel,convergence;
+    int timestepsbetweenprint,tempstepsbetweensmallprint;
+    double olddtnom,riftvelo,dtnew,timestart,timesolve,timeother;
+    timestart=omp_get_wtime();
+    statusfile = fopen("status.txt","a");
+    fprintf(statusfile,"ITERATION: %d\n",iterationnumber); 
+    timestepsbetweenprint=2000; tempstepsbetweensmallprint=10;
+    // if (iterationnumber%timestepsbetweenprint==0) printstate(iterationnumber/timestepsbetweenprint);
+    // if (iterationnumber%tempstepsbetweensmallprint==0) outputsurfaces();
+    
+    Tp=1400; // Potential temperature in Celcius for bottom boundary condition.
+    Tbottom=Tp+273-(710e3-zmax)*0.5/1000;
+    olddtnom=dtnom;
+    voldold=vold; vold=leftboundvel; Ioldold=Iold; Iold=stressintegral;
+
+    // change ice thickness at these times
+    if (time>=deglaciation_start*60*60*24*365 && time<=(deglaciation_start + 1e5)*60*60*24*365) {
+      markstart = 0;
+      markend = 0;
+      timestepsbetweenprint=1;
+    }
+    if (time>=deglaciation_end*60*60*24*365 && markstart == 0) {
+      deglaciation_start = deglaciation_start + 1e6;
+      markstart = 1;
+    }
+    if (time>=(deglaciation_end + 1e5)*60*60*24*365 && markend == 0) {
+      deglaciation_end = deglaciation_start + 1e6;
+      markend = 1;
+    }
+    
+    if (iterationnumber%timestepsbetweenprint==0) printstate(iterationnumber/timestepsbetweenprint);
+    if (iterationnumber%tempstepsbetweensmallprint==0) outputsurfaces();
+        
+    riftvelo=0.010; //0.015; // m/yr
+    if (xmax<3300e3 && time>1e5*60*60*24*365) {
+        velocityboundarychange1(0,1,0,-1,riftvelo*3.17e-8);
+//         if (riftvelo>0.005) dtnom*=0.005/riftvelo;
+    }
+    else {
+        velocityboundarychange1(0,1,0,-1,0);
+    }
+
+    accetable_vel=0;
+    while (accetable_vel==0) {
+        timeother=omp_get_wtime();
+        markermomentumparamstogrid(); fprintf(statusfile,"momentum interp time %g\n",omp_get_wtime()-timeother);
+        fprintf(statusfile,"time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13); 
+        timesolve=omp_get_wtime();
+        convergence=solve(stressprecision);  fprintf(statusfile,"solve time %g\n",omp_get_wtime()-timesolve);
+//         fprintf(statusfile,"max vel %g m/s, dt %g Ma, mincellsize %g m\n",maxvelocity(),dt,mincellsize);
+        if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
+        if (!convergence) {accetable_vel=0; dt*=0.5; }
+    }
+    timeother=omp_get_wtime(); stressstrainupdate(); fprintf(statusfile,"stressstrainupdate time %g\n",omp_get_wtime()-timeother);
+    timeother=omp_get_wtime(); updatetemp(); fprintf(statusfile,"updatetemp time %g ",omp_get_wtime()-timeother);
+    if (iterationnumber%tempstepsbetweensmallprint==0) { outputtempprofiles(); outputmeltcomp(); }
+    meltupdate();
+    mocompinst();
+    timeother=omp_get_wtime(); stressrotation(); fprintf(statusfile,"stressrotation time %g\n",omp_get_wtime()-timeother);
+    timeother=omp_get_wtime(); movemarkers1(); fprintf(statusfile, "movemarkers time %g\n", omp_get_wtime()-timeother);
+    
+    timeother=omp_get_wtime();
+
+    if (iterationnumber%1000==0) surfaceupdate(1); else surfaceupdate(0);
+    fprintf(statusfile, "surfaceupdate time %g\n", omp_get_wtime()-timeother);
+    
+    time+=dt; iterationnumber++;
+    fprintf(statusfile,"number of yield markers %d\n",numberofyieldmarkers); 
+    fprintf(statusfile,"total time %g\n\n",omp_get_wtime()-timestart);
+    fclose(statusfile);
+    
+    dtnom=olddtnom;
+}
+
 void timestep_force() {
     int accetable_vel,convergence;
     int timestepsbetweenprint,tempstepsbetweensmallprint;
