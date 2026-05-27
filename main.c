@@ -612,11 +612,15 @@ double calcnewoutvelocity() {
     return vnew;
 }
 
-
-void timestep() {
+void timestep_force() {
     int accetable_vel,convergence;
     int timestepsbetweenprint,tempstepsbetweensmallprint;
     double olddtnom,riftvelo,dtnew,timestart,timesolve,timeother;
+
+    const double rift_step = 0.001; // m/yr, how much to increase each trial
+    const double stress_threshold = 1e7; // maximum stress
+    const int    max_rift_iters = 10;    // safety limit
+
     timestart=omp_get_wtime();
     statusfile = fopen("status.txt","a");
     fprintf(statusfile,"ITERATION: %d\n",iterationnumber); 
@@ -646,27 +650,64 @@ void timestep() {
     
     if (iterationnumber%timestepsbetweenprint==0) printstate(iterationnumber/timestepsbetweenprint);
     if (iterationnumber%tempstepsbetweensmallprint==0) outputsurfaces();
-        
-    riftvelo=0.010; //0.015; // m/yr
-    if (xmax<3300e3 && time>1e5*60*60*24*365) {
-        velocityboundarychange1(0,1,0,-1,riftvelo*3.17e-8);
-//         if (riftvelo>0.005) dtnom*=0.005/riftvelo;
-    }
-    else {
-        velocityboundarychange1(0,1,0,-1,0);
+    
+    if (iterationnumber == 0) {
+        riftvelo = 0.001; // m/yr, initial guess for rift velocity
     }
 
-    accetable_vel=0;
-    while (accetable_vel==0) {
-        timeother=omp_get_wtime();
-        markermomentumparamstogrid(); fprintf(statusfile,"momentum interp time %g\n",omp_get_wtime()-timeother);
-        fprintf(statusfile,"time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13); 
-        timesolve=omp_get_wtime();
-        convergence=solve(stressprecision);  fprintf(statusfile,"solve time %g\n",omp_get_wtime()-timesolve);
-//         fprintf(statusfile,"max vel %g m/s, dt %g Ma, mincellsize %g m\n",maxvelocity(),dt,mincellsize);
-        if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
-        if (!convergence) {accetable_vel=0; dt*=0.5; }
+    /* adapt riftvelo */
+    double riftvelo_trial = riftvelo;   // start from last accepted value
+    int    rift_iter = 0;
+    int    convergence = 0;
+
+    while (rift_iter < max_rift_iters) {
+
+        // Update rift boundary velocity for this trial
+        if (xmax < 3300e3 && time > 1e5*60*60*24*365) {
+            velocityboundarychange1(0, 1, 0, -1, riftvelo_trial * 3.17e-8);
+        } else {
+            velocityboundarychange1(0, 1, 0, -1, 0.0);
+        }
+
+        // Solve with this riftvelo_trial
+        accetable_vel=0;
+        while (accetable_vel==0) {
+            timeother=omp_get_wtime();
+            markermomentumparamstogrid();
+            fprintf(statusfile,"momentum interp time %g\n",omp_get_wtime()-timeother);
+            fprintf(statusfile,
+                "time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",
+                time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13);
+
+            timesolve=omp_get_wtime();
+            convergence=solve(stressprecision);
+            fprintf(statusfile,"solve time %g\n",omp_get_wtime()-timesolve);
+            // fprintf(statusfile,"max vel %g m/s, dt %g Ma, mincellsize %g m\n",maxvelocity(),dt,mincellsize);
+
+            if (!convergence) {
+                // Solver failed: reduce dt and restart whole outer loop
+                dt *= 0.5;
+                accetable_vel = 0;
+            }
+            if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
+        }
+            
+        // Print stress integral and check if it's acceptable
+        fprintf(statusfile, "Rift trial %d: riftvelo=%g m/yr, stress_integral=%g\n",
+            rift_iter, riftvelo_trial, stressintegral);
+            
+        // Check threshold
+        if (stressintegral >= stress_threshold || rift_iter == max_rift_iters - 1) {
+            // Accept this riftvelo_trial
+            riftvelo = riftvelo_trial;
+            break;
+        }
+
+        // Otherwise, increase riftvelo and try again
+        riftvelo_trial += rift_step;
+        ++rift_iter;
     }
+
     timeother=omp_get_wtime(); stressstrainupdate(); fprintf(statusfile,"stressstrainupdate time %g\n",omp_get_wtime()-timeother);
     timeother=omp_get_wtime(); updatetemp(); fprintf(statusfile,"updatetemp time %g ",omp_get_wtime()-timeother);
     if (iterationnumber%tempstepsbetweensmallprint==0) { outputtempprofiles(); outputmeltcomp(); }
