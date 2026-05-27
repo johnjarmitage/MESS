@@ -1,0 +1,2 @@
+void mocompinst();
+void outputmeltcomp();
