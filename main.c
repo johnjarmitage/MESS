@@ -694,7 +694,7 @@ void timestep_force() {
 
     const double rift_step = 0.001; // m/yr, how much to increase each trial
     const double stress_threshold = 1e7; // maximum stress
-    const int    max_rift_iters = 10;    // safety limit
+    const int    max_rift_iters = 100;    // safety limit
 
     timestart=omp_get_wtime();
     statusfile = fopen("status.txt","a");
@@ -772,10 +772,17 @@ void timestep_force() {
             rift_iter, riftvelo_trial, stressintegral);
             
         // Check threshold
-        if (stressintegral >= stress_threshold || rift_iter == max_rift_iters - 1) {
+        if (stressintegral >= stress_threshold) {
             // Accept this riftvelo_trial
             riftvelo = riftvelo_trial;
             break;
+        }
+
+        // Stop the model if the number of itterations is too high, to avoid infinite loops
+        if (rift_iter == max_rift_iters - 1) {
+            fprintf(statusfile, "Warning: Maximum rift velocity iterations reached without \
+                achieving the threshold. Exiting the model.\n");
+            exit(1);
         }
 
         // Otherwise, increase riftvelo and try again
@@ -783,17 +790,28 @@ void timestep_force() {
         ++rift_iter;
     }
 
-    timeother=omp_get_wtime(); stressstrainupdate(); fprintf(statusfile,"stressstrainupdate time %g\n",omp_get_wtime()-timeother);
-    timeother=omp_get_wtime(); updatetemp(); fprintf(statusfile,"updatetemp time %g ",omp_get_wtime()-timeother);
-    if (iterationnumber%tempstepsbetweensmallprint==0) { outputtempprofiles(); outputmeltcomp(); }
+    timeother=omp_get_wtime();
+    stressstrainupdate();
+    fprintf(statusfile,"stressstrainupdate time %g\n",omp_get_wtime()-timeother);
+    timeother=omp_get_wtime();
+    updatetemp();
+    fprintf(statusfile,"updatetemp time %g ",omp_get_wtime()-timeother);
+    if (iterationnumber%tempstepsbetweensmallprint==0) { 
+        outputtempprofiles();
+        outputmeltcomp();
+    }
     meltupdate();
     mocompinst();
-    timeother=omp_get_wtime(); stressrotation(); fprintf(statusfile,"stressrotation time %g\n",omp_get_wtime()-timeother);
-    timeother=omp_get_wtime(); movemarkers1(); fprintf(statusfile, "movemarkers time %g\n", omp_get_wtime()-timeother);
+    timeother=omp_get_wtime();
+    stressrotation();
+    fprintf(statusfile,"stressrotation time %g\n",omp_get_wtime()-timeother);
+    timeother=omp_get_wtime();
+    movemarkers1();
+    fprintf(statusfile, "movemarkers time %g\n", omp_get_wtime()-timeother);
     
     timeother=omp_get_wtime();
-
-    if (iterationnumber%1000==0) surfaceupdate(1); else surfaceupdate(0);
+    if (iterationnumber%1000==0) surfaceupdate(1);
+    else surfaceupdate(0);
     fprintf(statusfile, "surfaceupdate time %g\n", omp_get_wtime()-timeother);
     
     time+=dt; iterationnumber++;
@@ -818,15 +836,33 @@ void firsttimesteps() { //number of short timesteps to make elastic stress build
     dtnom=olddtnom;
 }
 
-int main( int argc, char *argv[] ) {
+int main(int argc, char *argv[] ) {
     int a,gravityon;
     double lengthx,lengthz;
     int riftinghasbegun,plottask,NNN;
     double riftendtime;
-    sscanf(argv[1],"%d",&Nthreads);
+    char mod_type;
+
+    // Check that we have enough arguments
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <num_threads> <V|F>\n", argv[0]);
+        return 1;
+    }
+
+    sscanf(argv[1], "%d", &Nthreads);
+    mod_type = argv[2][0];  // Read first character of second argument
+
+    // Validate the mode type
+    if (mod_type != 'V' && mod_type != 'F') {
+        fprintf(stderr, "Error: mod_type must be 'V' or 'F', got '%c'\n", mod_type);
+        return 1;
+    }
+
     omp_set_num_threads(Nthreads);
+
     statusfile = fopen("status.txt","w");
-    surfacefile = fopen("outfiles/surfaces.txt","w"); fclose(surfacefile);
+    surfacefile = fopen("outfiles/surfaces.txt","w");
+    fclose(surfacefile);
         
     initialize();
     stressprecision=1e4;
@@ -855,7 +891,11 @@ int main( int argc, char *argv[] ) {
     for (a=0;time<40e6*60*60*24*365;a++) {
     //for (a=0;a=2;a++) { // speed testing -> 3 time steps
         if (iterationnumber>100000000) break;
-        timestep();
+        if (mod_type == 'V') {
+            timestep();
+        } else if (mod_type == 'F') {
+            timestep_force();
+        }
     }
     printstate(20000);
     return 0;
