@@ -10,7 +10,7 @@ void stressrotation();
 double rhogridtomarker(int e,double *grid);
 double secdevinv2(double tensorxx,double tensorxz);
 double maxvelocity();
-double stressstrainupdate_readonly() 
+double stressstrainupdate_readonly();
 
 int get_s(double xpos);
 int get_t(double zpos);
