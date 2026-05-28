@@ -688,7 +688,8 @@ void timestep() {
 }
 
 void timestep_force() {
-    int accetable_vel,convergence;
+    int accetable_vel;
+    int convergence;
     int timestepsbetweenprint,tempstepsbetweensmallprint;
     double olddtnom,riftvelo,dtnew,timestart,timesolve,timeother;
 
@@ -733,7 +734,7 @@ void timestep_force() {
     /* adapt riftvelo */
     double riftvelo_trial = riftvelo;   // start from last accepted value
     int    rift_iter = 0;
-    int    convergence = 0;
+    convergence = 0; // initialize convergence to false
 
     while (rift_iter < max_rift_iters) {
 

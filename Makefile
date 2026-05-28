@@ -14,14 +14,14 @@
 #LIB = 
 
 ## local options
-CC = gcc
-CFLAGS = -O2 -Wall -fopenmp
-LIB = -lm
+#CC = gcc
+#CFLAGS = -O2 -Wall -fopenmp
+#LIB = -lm
 
 ## debug
-#CC = gcc
-#CFLAGS = -g -fopenmp
-#LIB = -lm
+CC = gcc
+CFLAGS = -g -fopenmp
+LIB = -lm
 
 melting:
 	$(CC) $(CFLAGS) $(LIB) -o melting.$(CC) main.c \
