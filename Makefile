@@ -26,5 +26,8 @@ LIB = -lm
 melting:
 	$(CC) $(CFLAGS) $(LIB) -o melting.$(CC) main.c \
 	momentummarkerfuncs_par.c multigridfuncs2.c tempfuncs_par.c surfacefuncs.c composition.c
+veloforce:
+	$(CC) $(CFLAGS) $(LIB) -o veloforce.$(CC) main.c \
+	momentummarkerfuncs_par.c multigridfuncs2.c tempfuncs_par.c surfacefuncs.c composition.c
 clean:
-	rm melting.$(CC)
+	rm melting.$(CC) veloforce.$(CC)
