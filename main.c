@@ -56,6 +56,8 @@ double **mXComp,**mRComp,*bulkcomp;
 int glacier,deglaciate,markstart,markend;
 double icethick,deglaciation_start,deglaciation_end;
 
+double riftvelo = 0;
+
 /*
 #include "momentmummarkerfuncs_par.c"
 #include "multigridfuncs2.c"
@@ -615,7 +617,7 @@ double calcnewoutvelocity() {
 void timestep() {
     int accetable_vel,convergence;
     int timestepsbetweenprint,tempstepsbetweensmallprint;
-    double olddtnom,riftvelo,dtnew,timestart,timesolve,timeother;
+    double olddtnom,dtnew,timestart,timesolve,timeother;
     timestart=omp_get_wtime();
     statusfile = fopen("status.txt","a");
     fprintf(statusfile,"ITERATION: %d\n",iterationnumber); 
@@ -691,11 +693,13 @@ void timestep_force() {
     int accetable_vel;
     int convergence;
     int timestepsbetweenprint,tempstepsbetweensmallprint;
-    double olddtnom,riftvelo,dtnew,timestart,timesolve,timeother;
+    double olddtnom,dtnew,timestart,timesolve,timeother;
 
     const double rift_step = 0.001; // m/yr, how much to increase each trial
-    const double stress_threshold = 1e7; // maximum stress
+    const double stress_threshold = 10e12; // maximum stress
     const int    max_rift_iters = 100;    // safety limit
+    double stress_integral;
+    double stress_tollerance = 0.01; // how close to zero the stress integral needs to be to accept the rift velocity
 
     timestart=omp_get_wtime();
     statusfile = fopen("status.txt","a");
@@ -731,14 +735,6 @@ void timestep_force() {
         riftvelo = 0.001; // m/yr, initial guess for rift velocity
     }
 
-if (xmax<3300e3 && time>1e5*60*60*24*365) {
-        velocityboundarychange1(0,1,0,-1,riftvelo*3.17e-8);
-//         if (riftvelo>0.005) dtnom*=0.005/riftvelo;
-    }
-    else {
-        velocityboundarychange1(0,1,0,-1,0);
-    }
-
     if (time <= 1e5*60*60*24*365) {
         /* Before rifting starts, just run the model with zero velocity and no adjustments */
         velocityboundarychange1(0, 1, 0, -1, 0);
@@ -764,7 +760,7 @@ if (xmax<3300e3 && time>1e5*60*60*24*365) {
     else {
         /* adapt riftvelo */
         fprintf(statusfile, "Starting rift velocity adaptation loop...\n");
-        
+
         double riftvelo_trial = riftvelo;   // start from last accepted value
         int    rift_iter = 0;
         convergence = 0; // initialize convergence to false
@@ -796,34 +792,45 @@ if (xmax<3300e3 && time>1e5*60*60*24*365) {
                 }
                 if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
             }
+
+            // get stress integral using read only function that doesn't change the model state
+            stress_integral = stressstrainupdate_readonly();
                 
             // Print stress integral and check if it's acceptable
             fprintf(statusfile, "Rift trial %d: riftvelo=%g m/yr, stress_integral=%g\n",
-                rift_iter, riftvelo_trial, stressintegral);
+                rift_iter, riftvelo_trial, stress_integral);
                 
             // Check threshold
-            if (stressintegral >= stress_threshold) {
+            if (stress_integral >= (1 - stress_tollerance) * stress_threshold && stress_integral <= (1 + stress_tollerance) * stress_threshold) {
                 // Accept this riftvelo_trial
                 riftvelo = riftvelo_trial;
                 break;
+            }
+            else if (stress_integral > (1 + stress_tollerance) * stress_threshold) {
+                // Stress too high, decrease riftvelo
+                riftvelo_trial -= rift_step;
+            }
+            else {
+                // Stress too low, increase riftvelo
+                riftvelo_trial += rift_step;
             }
 
             // Stop the model if the number of itterations is too high, to avoid infinite loops
             if (rift_iter == max_rift_iters - 1) {
                 fprintf(statusfile, "Warning: Maximum rift velocity iterations reached without \
-                    achieving the threshold. Exiting the model.\n");
-                exit(1);
+                    achieving the threshold. Continuing with final force = %g.\n", stress_integral);
+                riftvelo = riftvelo_trial;
             }
 
-            // Otherwise, increase riftvelo and try again
-            riftvelo_trial += rift_step;
             ++rift_iter;
         }
     }
-
+    
+    /* update stresses and strains */
     timeother=omp_get_wtime();
     stressstrainupdate();
     fprintf(statusfile,"stressstrainupdate time %g\n",omp_get_wtime()-timeother);
+
     timeother=omp_get_wtime();
     updatetemp();
     fprintf(statusfile,"updatetemp time %g ",omp_get_wtime()-timeother);

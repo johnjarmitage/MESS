@@ -48,6 +48,7 @@ extern double **mXComp,**mRComp,*bulkcomp;
 extern int glacier,deglaciate,markstart,markend;
 extern double icethick,deglaciation_start,deglaciation_end;
 
+extern double riftvelo;
 
 // Functions
 
