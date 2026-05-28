@@ -753,6 +753,86 @@ void stressstrainupdate() {
     fprintf(statusfile,"stress integral %g\n",stressintegral);
 }
 
+double stressstrainupdate_readonly() {
+    int s, t, st;
+    double *gridstrainxx, *gridstrainxz, *gridstressxx, *gridstressxz;
+    double vzV, vzE, vxN, vxS;
+    double Z;
+    double stressintegral;
+    double d = 1;
+    
+    // Allocate temporary grids
+    gridstrainxx = cx0;
+    gridstrainxz = cx1;
+    gridstressxx = cx2;
+    gridstressxz = cx3;
+    
+    resetbasegrid(gridstrainxx);
+    resetbasegrid(gridstrainxz);
+    resetbasegrid(gridstressxx);
+    resetbasegrid(gridstressxz);
+    
+    // Calculate gridstrainxx and gridstressxx
+    #pragma omp parallel for schedule(static) private(s, t, st, Z)
+    for (t = 0; t < Tbase - 1; t++) {
+        for (s = 0; s < Sbase - 1; s++) {
+            st = IN0(s, t);
+            gridstrainxx[st] = 0.5 * ((vx[IN0(s + 1, t)] - vx[st]) / dx[s] - 
+                                      (vz[IN0(s, t + 1)] - vz[st]) / dz[t]);
+            Z = dt * gridmyn[st] / (dt * gridmyn[st] + gridviscn[st]);
+            gridstressxx[st] = 2 * gridviscn[st] * gridstrainxx[st] * Z + 
+                               gridoldstressxx[st] * (1 - Z);
+        }
+    }
+    
+    // Calculate gridstrainxz
+    #pragma omp parallel for schedule(static) private(s, t, st, vzE, vzV, vxS, vxN)
+    for (t = 1; t < Tbase - 1; t++) {
+        for (s = 1; s < Sbase - 1; s++) {
+            st = IN0(s, t);
+            vzE = vz[st];
+            vzV = vz[IN0(s - 1, t)];
+            vxS = vx[st];
+            vxN = vx[IN0(s, t - 1)];
+            gridstrainxz[st] = (vxS - vxN) / (dz[t] + dz[t - 1]) + 
+                               (vzE - vzV) / (dx[s] + dx[s - 1]);
+        }
+    }
+    // Fill boundaries
+    for (s = 1; s < Sbase - 1; s++) {
+        gridstrainxz[IN0(s, 0)] = gridstrainxz[IN0(s, 1)];
+        gridstrainxz[IN0(s, Tbase - 1)] = gridstrainxz[IN0(s, Tbase - 2)];
+    }
+    for (t = 1; t < Tbase - 1; t++) {
+        gridstrainxz[IN0(0, t)] = gridstrainxz[IN0(1, t)];
+        gridstrainxz[IN0(Sbase - 1, t)] = gridstrainxz[IN0(Sbase - 2, t)];
+    }
+    gridstrainxz[IN0(0, 0)] = 0.5 * (gridstrainxz[IN0(1, 0)] + gridstrainxz[IN0(0, 1)]);
+    gridstrainxz[IN0(Sbase - 1, 0)] = 0.5 * (gridstrainxz[IN0(Sbase - 2, 0)] + gridstrainxz[IN0(Sbase - 1, 1)]);
+    gridstrainxz[IN0(0, Tbase - 1)] = 0.5 * (gridstrainxz[IN0(1, Tbase - 1)] + gridstrainxz[IN0(0, Tbase - 2)]);
+    gridstrainxz[IN0(Sbase - 1, Tbase - 1)] = 0.5 * (gridstrainxz[IN0(Sbase - 2, Tbase - 1)] + gridstrainxz[IN0(Sbase - 1, Tbase - 2)]);
+    
+    // Calculate gridstressxz
+    #pragma omp parallel for schedule(static) private(s, t, st, Z)
+    for (t = 0; t < Tbase; t++) {
+        for (s = 0; s < Sbase; s++) {
+            st = IN0(s, t);
+            Z = dt * gridmys[st] / (dt * gridmys[st] + gridviscs[st]);
+            gridstressxz[st] = 2 * gridviscs[st] * gridstrainxz[st] * Z + 
+                               gridoldstressxz[st] * (1 - Z);
+        }
+    }
+    
+    // Calculate and return stress integral
+    stressintegral = 0;
+    for (t = 0; t < Tbase - 1; t++) {
+        st = IN0(Sbase - 2, t);
+        stressintegral += gridstressxx[st] * dz[t];
+    }
+    
+    return stressintegral;
+}
+
 void printages(int name) { 
     FILE *file;
     char a[100];

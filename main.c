@@ -731,64 +731,94 @@ void timestep_force() {
         riftvelo = 0.001; // m/yr, initial guess for rift velocity
     }
 
-    /* adapt riftvelo */
-    double riftvelo_trial = riftvelo;   // start from last accepted value
-    int    rift_iter = 0;
-    convergence = 0; // initialize convergence to false
+if (xmax<3300e3 && time>1e5*60*60*24*365) {
+        velocityboundarychange1(0,1,0,-1,riftvelo*3.17e-8);
+//         if (riftvelo>0.005) dtnom*=0.005/riftvelo;
+    }
+    else {
+        velocityboundarychange1(0,1,0,-1,0);
+    }
 
-    while (rift_iter < max_rift_iters) {
+    if (time <= 1e5*60*60*24*365) {
+        /* Before rifting starts, just run the model with zero velocity and no adjustments */
+        velocityboundarychange1(0, 1, 0, -1, 0);
 
-        // Update rift boundary velocity for this trial
-        if (xmax < 3300e3 && time > 1e5*60*60*24*365) {
-            velocityboundarychange1(0, 1, 0, -1, riftvelo_trial * 3.17e-8);
-        } else {
-            velocityboundarychange1(0, 1, 0, -1, 0.0);
-        }
-
-        // Solve with this riftvelo_trial
-        accetable_vel=0;
+        accetable_vel = 0;
         while (accetable_vel==0) {
-            timeother=omp_get_wtime();
+            timeother = omp_get_wtime();
             markermomentumparamstogrid();
             fprintf(statusfile,"momentum interp time %g\n",omp_get_wtime()-timeother);
-            fprintf(statusfile,
-                "time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",
-                time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13);
-
-            timesolve=omp_get_wtime();
-            convergence=solve(stressprecision);
+            fprintf(statusfile,"time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",
+                time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13); 
+            timesolve = omp_get_wtime();
+            convergence = solve(stressprecision);
             fprintf(statusfile,"solve time %g\n",omp_get_wtime()-timesolve);
-            // fprintf(statusfile,"max vel %g m/s, dt %g Ma, mincellsize %g m\n",maxvelocity(),dt,mincellsize);
 
-            if (!convergence) {
-                // Solver failed: reduce dt and restart whole outer loop
-                dt *= 0.5;
-                accetable_vel = 0;
-            }
             if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
+            if (!convergence) {
+                accetable_vel=0;
+                dt*=0.5; 
+            }
         }
-            
-        // Print stress integral and check if it's acceptable
-        fprintf(statusfile, "Rift trial %d: riftvelo=%g m/yr, stress_integral=%g\n",
-            rift_iter, riftvelo_trial, stressintegral);
-            
-        // Check threshold
-        if (stressintegral >= stress_threshold) {
-            // Accept this riftvelo_trial
-            riftvelo = riftvelo_trial;
-            break;
-        }
+    }
+    else {
+        /* adapt riftvelo */
+        fprintf(statusfile, "Starting rift velocity adaptation loop...\n");
+        
+        double riftvelo_trial = riftvelo;   // start from last accepted value
+        int    rift_iter = 0;
+        convergence = 0; // initialize convergence to false
 
-        // Stop the model if the number of itterations is too high, to avoid infinite loops
-        if (rift_iter == max_rift_iters - 1) {
-            fprintf(statusfile, "Warning: Maximum rift velocity iterations reached without \
-                achieving the threshold. Exiting the model.\n");
-            exit(1);
-        }
+        while (rift_iter < max_rift_iters) {
 
-        // Otherwise, increase riftvelo and try again
-        riftvelo_trial += rift_step;
-        ++rift_iter;
+            // Update rift boundary velocity for this trial
+            velocityboundarychange1(0, 1, 0, -1, riftvelo_trial * 3.17e-8);
+
+            // Solve with this riftvelo_trial
+            accetable_vel=0;
+            while (accetable_vel==0) {
+                timeother=omp_get_wtime();
+                markermomentumparamstogrid();
+                fprintf(statusfile,"momentum interp time %g\n",omp_get_wtime()-timeother);
+                fprintf(statusfile,
+                    "time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",
+                    time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13);
+
+                timesolve=omp_get_wtime();
+                convergence=solve(stressprecision);
+                fprintf(statusfile,"solve time %g\n",omp_get_wtime()-timesolve);
+                // fprintf(statusfile,"max vel %g m/s, dt %g Ma, mincellsize %g m\n",maxvelocity(),dt,mincellsize);
+
+                if (!convergence) {
+                    // Solver failed: reduce dt and restart whole outer loop
+                    dt *= 0.5;
+                    accetable_vel = 0;
+                }
+                if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
+            }
+                
+            // Print stress integral and check if it's acceptable
+            fprintf(statusfile, "Rift trial %d: riftvelo=%g m/yr, stress_integral=%g\n",
+                rift_iter, riftvelo_trial, stressintegral);
+                
+            // Check threshold
+            if (stressintegral >= stress_threshold) {
+                // Accept this riftvelo_trial
+                riftvelo = riftvelo_trial;
+                break;
+            }
+
+            // Stop the model if the number of itterations is too high, to avoid infinite loops
+            if (rift_iter == max_rift_iters - 1) {
+                fprintf(statusfile, "Warning: Maximum rift velocity iterations reached without \
+                    achieving the threshold. Exiting the model.\n");
+                exit(1);
+            }
+
+            // Otherwise, increase riftvelo and try again
+            riftvelo_trial += rift_step;
+            ++rift_iter;
+        }
     }
 
     timeother=omp_get_wtime();
