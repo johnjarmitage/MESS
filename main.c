@@ -695,11 +695,11 @@ void timestep_force() {
     int timestepsbetweenprint,tempstepsbetweensmallprint;
     double olddtnom,dtnew,timestart,timesolve,timeother;
 
-    const double rift_step = 0.001; // m/yr, how much to increase each trial
+    const double rift_step = 0.01; // m/yr, how much to increase each trial
     const double stress_threshold = 10e12; // maximum stress
-    const int    max_rift_iters = 100;    // safety limit
+    const int    max_rift_iters = 50;    // safety limit
     double stress_integral;
-    double stress_tollerance = 0.01; // how close to zero the stress integral needs to be to accept the rift velocity
+    double stress_tollerance = 0.05; // how close to zero the stress integral needs to be to accept the rift velocity
 
     timestart=omp_get_wtime();
     statusfile = fopen("status.txt","a");
