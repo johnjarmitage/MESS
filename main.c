@@ -695,11 +695,11 @@ void timestep_force() {
     int timestepsbetweenprint,tempstepsbetweensmallprint;
     double olddtnom,dtnew,timestart,timesolve,timeother;
 
-    const double rift_step = 0.01; // m/yr, how much to increase each trial
+    const double rift_step = 0.001; // m/yr, how much to increase each trial
     const double stress_threshold = 10e12; // maximum stress
     const int    max_rift_iters = 50;    // safety limit
     double stress_integral;
-    double stress_tollerance = 0.05; // how close to zero the stress integral needs to be to accept the rift velocity
+    double stress_tollerance = 0.005; // how close to zero the stress integral needs to be to accept the rift velocity
 
     timestart=omp_get_wtime();
     statusfile = fopen("status.txt","a");
@@ -732,7 +732,7 @@ void timestep_force() {
     if (iterationnumber%tempstepsbetweensmallprint==0) outputsurfaces();
     
     if (iterationnumber == 0) {
-        riftvelo = 0.001; // m/yr, initial guess for rift velocity
+        riftvelo = 0.01; // m/yr, initial guess for rift velocity
     }
 
     if (time <= 1e5*60*60*24*365) {
@@ -804,11 +804,20 @@ void timestep_force() {
             if (stress_integral >= (1 - stress_tollerance) * stress_threshold && stress_integral <= (1 + stress_tollerance) * stress_threshold) {
                 // Accept this riftvelo_trial
                 riftvelo = riftvelo_trial;
+                fprintf(statusfile, "Final rift vel.: time %g Ma, riftvelo %g m/yr, stress_integral %g TN\n",
+                    time/3.1536e13, riftvelo, stress_integral/1e12);
                 break;
             }
             else if (stress_integral > (1 + stress_tollerance) * stress_threshold) {
                 // Stress too high, decrease riftvelo
                 riftvelo_trial -= rift_step;
+                if (riftvelo_trial < 0) {
+                    fprintf(statusfile, "Warning: Rift velocity trial went negative. Setting to zero and accepting.\n");
+                    riftvelo = 0;
+                    printf(statusfile, "Final rift vel.: time %g Ma, riftvelo %g m/yr, stress_integral %g TN\n",
+                        time/3.1536e13, riftvelo, stress_integral/1e12);
+                    break;
+                }
             }
             else {
                 // Stress too low, increase riftvelo
@@ -820,6 +829,8 @@ void timestep_force() {
                 fprintf(statusfile, "Warning: Maximum rift velocity iterations reached without \
                     achieving the threshold. Continuing with final force = %g.\n", stress_integral);
                 riftvelo = riftvelo_trial;
+                fprintf(statusfile, "Final rift vel.: time %g Ma, riftvelo %g m/yr, stress_integral %g TN\n",
+                    time/3.1536e13, riftvelo, stress_integral/1e12);
             }
 
             ++rift_iter;
