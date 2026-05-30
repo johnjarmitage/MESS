@@ -698,6 +698,8 @@ void timestep_force() {
     const double rift_step = 0.001; // m/yr, how much to increase each trial
     const double stress_threshold = 10e12; // maximum stress
     const int    max_rift_iters = 50;    // safety limit
+    const double end_time_0 = 1e5*60*60*24*365; // time to start rifting
+    const double end_time_1 = 2e5*60*60*24*365; // time to start adapting rift velocity
     double stress_integral;
     double stress_tollerance = 0.005; // how close to zero the stress integral needs to be to accept the rift velocity
 
@@ -735,9 +737,31 @@ void timestep_force() {
         riftvelo = 0.01; // m/yr, initial guess for rift velocity
     }
 
-    if (time <= 1e5*60*60*24*365) {
+    if (time <= end_time_0) {
         /* Before rifting starts, just run the model with zero velocity and no adjustments */
         velocityboundarychange1(0, 1, 0, -1, 0);
+
+        accetable_vel = 0;
+        while (accetable_vel==0) {
+            timeother = omp_get_wtime();
+            markermomentumparamstogrid();
+            fprintf(statusfile,"momentum interp time %g\n",omp_get_wtime()-timeother);
+            fprintf(statusfile,"time:%g Ma. dt: %g Ma. dtnom %g Ma dtmaxwell %g Ma\n",
+                time/3.1536e13,dt/3.1536e13,dtnom/3.1536e13,dtmaxwell/3.1536e13); 
+            timesolve = omp_get_wtime();
+            convergence = solve(stressprecision);
+            fprintf(statusfile,"solve time %g\n",omp_get_wtime()-timesolve);
+
+            if (dt<5*mincellsize/maxvelocity()) accetable_vel=1;
+            if (!convergence) {
+                accetable_vel=0;
+                dt*=0.5; 
+            }
+        }
+    }
+    else if (time > end_time_0 && time <= end_time_1) {
+        /* To build up strength run at a constant velocity */
+        velocityboundarychange1(0, 1, 0, -1, riftvelo * 3.17e-8);
 
         accetable_vel = 0;
         while (accetable_vel==0) {
