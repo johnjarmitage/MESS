@@ -75,9 +75,9 @@ outfiles/
 output.ps
 pcolorim.m
 picknearestmarker.m
-plot_figure4and5.m
+./plot_figure4and5.m
 plot_meltthick.m
-plot_meltthick_ice.m
+./plot_meltthick_ice.m
 plot_min_crust.m
 plot_ree1.m
 plot_stress_envelope.m
@@ -149,7 +149,7 @@ speed_test.gcc
 speed_test.icc
 ssa.m
 status.txt
-steadystatelithos1.m
+./steadystatelithos1.m
 steadystatelithos_ice.m
 step_ice.png
 strong
@@ -168,3 +168,4 @@ wheeler.m
 wheeler1.m
 wheeler2.m
 wheeler3.m
+veloforce.gcc
