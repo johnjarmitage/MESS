@@ -838,7 +838,7 @@ void timestep_force() {
                 if (riftvelo_trial < 0) {
                     fprintf(statusfile, "Warning: Rift velocity trial went negative. Setting to zero and accepting.\n");
                     riftvelo = 0;
-                    printf(statusfile, "Final rift vel.: time %g Ma, riftvelo %g m/yr, stress_integral %g TN\n",
+                    fprintf(statusfile, "Final rift vel.: time %g Ma, riftvelo %g m/yr, stress_integral %g TN\n",
                         time/3.1536e13, riftvelo, stress_integral/1e12);
                     break;
                 }
